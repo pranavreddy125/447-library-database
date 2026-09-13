@@ -29,6 +29,7 @@ The administrator will conduct individual check-ins and organize more frequent s
 - **Computing platform experience:** macOS
 - **Programming language knowledge:** SQL, Python, C/C++, HTML/CSS, JavaScript, Go
 - **Team role and responsibilities:** Administrator and group leader
+- **Photo (optional):** Image omitted from this Markdown version.
 
 ### Team Member 2 — Gabriel Haro-Villa
 
@@ -37,6 +38,7 @@ The administrator will conduct individual check-ins and organize more frequent s
 - **Computing platform experience:** Windows
 - **Programming language knowledge:** Python, C++, JavaScript, HTML/CSS
 - **Team role and responsibilities:** Database design
+- **Photo (optional):** Add here if desired.
 
 ### Team Member 3 — Daniel Harris
 
@@ -45,6 +47,7 @@ The administrator will conduct individual check-ins and organize more frequent s
 - **Computing platform experience:** Linux, Windows
 - **Programming language knowledge:** Python, C, C++
 - **Team role and responsibilities:** Testing and version control
+- **Photo (optional):** Add here if desired.
 
 ### Team Member 4 — Mo Osby
 
@@ -53,14 +56,16 @@ The administrator will conduct individual check-ins and organize more frequent s
 - **Computing platform experience:** macOS, Windows, Linux
 - **Programming language knowledge:** Python, Java, Swift
 - **Team role and responsibilities:** Note taking
+- **Photo (optional):** Add here if desired.
 
 ### Team Member 5 — Karim Lakhani
 
 - **Contact information:** klakhani@ku.edu
 - **Availability:** Monday, Wednesday, and Friday from 8:00-11:00 AM and 1:00-8:00 PM; Tuesday and Thursday from 8:00-10:00 AM and 5:00-8:00 PM
 - **Computing platform experience:** macOS
-- **Programming language knowledge:** Python, SQL
+- **Programming language knowledge:** Python, SQL, etc.
 - **Team role and responsibilities:** SQL / Implementation Lead
+- **Photo (optional):**
 
 ---
 
