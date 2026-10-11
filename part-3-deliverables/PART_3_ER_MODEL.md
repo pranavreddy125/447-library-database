@@ -152,9 +152,11 @@ An item can have only one active loan at a time. Checkout must follow membership
 
 ## **Project Meeting Log**
 
-### **Meeting: Sep 27, 2026**
+### **Date: Sep 27th 2026**
 
-Time: 5 PM
+Time: 11-12
+
+Location: Virtual
 
 Objective: Review Part 3 requirements and divide the work
 
@@ -178,9 +180,11 @@ Deadline: Oct 4, 2026
 
 * Finish the ER components and use them to create the diagram
 
-### **Meeting: Oct 4, 2026**
+### **Date: Oct 4th 2026**
 
-Time: 5 PM
+Time: 5-6
+
+Location: Virtual
 
 Objective: Complete and review the Part 3 ER model
 
