@@ -148,8 +148,6 @@ An item can have only one active loan at a time. Checkout must follow membership
 
 ## **3\. ER Model (also attached as pdf, see Github)**
 
-![Chen ER diagram](PART_3_ER_DIAGRAM.png)
-
 [View the separate ER diagram PDF](PART_3_ER_DIAGRAM.pdf)
 
 ## **Project Meeting Log**
