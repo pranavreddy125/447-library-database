@@ -10,7 +10,7 @@ The Library Management System is a database for a small library. It stores libra
 
 ### **Scope**
 
-The project covers books, digital media, magazines, client accounts and membership types, checkouts and returns, reservations, notifications, item restrictions, and late fees. Part 3 models the entities, attributes, relationships, and constraints established in Part 2\. A production interface and integrations with outside library systems are outside the project’s scope.
+The project covers books, digital media, magazines, client accounts and membership types, checkouts and returns, reservations, notifications, item restrictions, and late fees. Part 3 models the entities, attributes, relationships, and constraints established in Part 2\. 
 
 ### **Glossary**
 
