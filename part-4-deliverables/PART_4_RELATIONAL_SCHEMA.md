@@ -1,4 +1,4 @@
-EECS 447 — Part 4: Relational Schema Mapping
+EECS 447 — Part 4: Logical Relational Model
 
 ## **1\. Introduction**
 
