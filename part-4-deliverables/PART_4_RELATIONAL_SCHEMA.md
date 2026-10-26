@@ -1,5 +1,3 @@
-# **Library Management System**
-
 EECS 447 — Part 4: Relational Schema Mapping
 
 ## **1\. Introduction**
@@ -40,8 +38,6 @@ Loan and Reservation link clients to items. Each has its own ID so the same clie
 
 ### **Relations and Primary Keys**
 
-PK \= primary key; FK \= foreign key.
-
 | Relation | Attributes |
 | :---- | :---- |
 | Membership Type | Membership Type ID (PK), Name, Borrowing Limit, Daily Late-Fee Rate |
@@ -52,7 +48,7 @@ PK \= primary key; FK \= foreign key.
 | Reservation | Reservation ID (PK), Client ID (FK), Item ID (FK), Reservation Date, Reservation Status |
 | Notification | Notification ID (PK), Client ID (FK), Loan ID (FK, nullable), Reservation ID (FK, nullable), Notification Type, Message, Creation Timestamp |
 
-Primary keys are unique and required. Late Fee.Loan ID is also unique and required. Item ID identifies each library item; ISBN, names, and phone numbers are not unique identifiers.
+Late Fee.Loan ID is unique and required. ISBN, names, and phone numbers are not unique identifiers.
 
 ### **Attributes and Domains**
 
@@ -108,7 +104,7 @@ Underlined attributes are primary keys. Arrows connect foreign keys to the prima
 
 ## **4\. Schema Documentation & Data Dictionary**
 
-PK \= primary key; FK \= foreign key; NN \= required. IDs are integers from 1 to 2,147,483,647. Required text cannot be blank. Nullable fields may be left empty where stated.
+IDs are positive integers. NN means required; required text cannot be blank. Nullable fields may be left empty where stated.
 
 ### **Membership Type**
 
@@ -116,8 +112,8 @@ PK \= primary key; FK \= foreign key; NN \= required. IDs are integers from 1 to
 | :---- | :---- | :---- | :---- |
 | Membership Type ID | INTEGER | PK; NN; positive ID | Identifies a borrowing-policy category. |
 | Name | VARCHAR(50) | NN; nonblank | Membership label, such as regular, student, or senior; not assumed unique. |
-| Borrowing Limit | INTEGER | NN; 0–2,147,483,647 | Maximum simultaneous active loans. |
-| Daily Late-Fee Rate | NUMERIC(6,2) | NN; 0.00–9,999.99 | Daily monetary charge for an overdue loan. |
+| Borrowing Limit | INTEGER | NN; 0 or more | Maximum simultaneous active loans. |
+| Daily Late-Fee Rate | NUMERIC(6,2) | NN; 0 or more | Daily monetary charge for an overdue loan. |
 
 ### **Client**
 
@@ -144,7 +140,7 @@ PK \= primary key; FK \= foreign key; NN \= required. IDs are integers from 1 to
 | Publication Year | SMALLINT | Required for books/digital media; 1–9999; null for magazines | Year of publication. |
 | Genre | VARCHAR(100) | Required, nonblank for books/digital media; null for magazines | Catalog genre label. |
 | Issue Number | VARCHAR(50) | Required, nonblank for magazines; null otherwise | Magazine issue designation; may include letters or punctuation. |
-| Publication Date | DATE | Required for magazines; valid calendar date; null otherwise | Calendar publication date of the issue. |
+| Publication Date | DATE | Required for magazines; null otherwise | Calendar publication date of the issue. |
 
 ### **Loan**
 
@@ -153,9 +149,9 @@ PK \= primary key; FK \= foreign key; NN \= required. IDs are integers from 1 to
 | Loan ID | INTEGER | PK; NN; positive ID | Identifies one checkout event. |
 | Item ID | INTEGER | NN; FK → Library Item.Item ID | Borrowed item; unique among active loans. |
 | Client ID | INTEGER | NN; FK → Client.Client ID | Client responsible for the loan. |
-| Checkout Timestamp | TIMESTAMP WITH TIME ZONE | NN; valid timestamp | Actual checkout instant. |
-| Due Date | DATE | NN; valid calendar date; on/after checkout date | Last calendar day before the loan becomes overdue. |
-| Return Timestamp | TIMESTAMP WITH TIME ZONE | Nullable; valid timestamp; on/after checkout | Null while active; records the return instant. |
+| Checkout Timestamp | TIMESTAMP WITH TIME ZONE | NN | Actual checkout instant. |
+| Due Date | DATE | NN; on/after checkout date | Last calendar day before the loan becomes overdue. |
+| Return Timestamp | TIMESTAMP WITH TIME ZONE | Nullable; on/after checkout | Null while active; records the return instant. |
 
 ### **Late Fee**
 
@@ -163,8 +159,8 @@ PK \= primary key; FK \= foreign key; NN \= required. IDs are integers from 1 to
 | :---- | :---- | :---- | :---- |
 | Fee ID | INTEGER | PK; NN; positive ID | Identifies one fee assessment. |
 | Loan ID | INTEGER | NN; UNIQUE; FK → Loan.Loan ID | Overdue loan associated with the fee. |
-| Amount Owed | NUMERIC(10,2) | NN; 0.00–99,999,999.99 | Total assessed charge before payments, not the remaining balance. |
-| Amount Paid | NUMERIC(10,2) | NN; 0.00–99,999,999.99 | Payments applied; balance \= Amount Owed − Amount Paid. |
+| Amount Owed | NUMERIC(10,2) | NN; 0 or more | Total assessed charge before payments, not the remaining balance. |
+| Amount Paid | NUMERIC(10,2) | NN; 0 or more | Payments applied; balance \= Amount Owed − Amount Paid. |
 
 ### **Reservation**
 
@@ -173,7 +169,7 @@ PK \= primary key; FK \= foreign key; NN \= required. IDs are integers from 1 to
 | Reservation ID | INTEGER | PK; NN; positive ID | Identifies one reservation event. |
 | Client ID | INTEGER | NN; FK → Client.Client ID | Client making the request. |
 | Item ID | INTEGER | NN; FK → Library Item.Item ID | Requested individual item. |
-| Reservation Date | DATE | NN; valid calendar date | Request date in the library time zone. |
+| Reservation Date | DATE | NN | Request date in the library time zone. |
 | Reservation Status | VARCHAR(10) | NN; pending, available, fulfilled, cancelled | Current request stage. |
 
 ### **Notification**
@@ -186,7 +182,7 @@ PK \= primary key; FK \= foreign key; NN \= required. IDs are integers from 1 to
 | Reservation ID | INTEGER | Nullable; FK → Reservation.Reservation ID | Required for reservation-availability notices; null for loan notices. |
 | Notification Type | VARCHAR(21) | NN; upcoming\_due, overdue, reservation\_available | Determines which event reference is required. |
 | Message | TEXT | NN; nonblank | Notification message. |
-| Creation Timestamp | TIMESTAMP WITH TIME ZONE | NN; valid timestamp | Time the notice record was created. |
+| Creation Timestamp | TIMESTAMP WITH TIME ZONE | NN | Time the notice record was created. |
 
 Books and digital media require Author/Creator, Publication Year, and Genre; ISBN is optional. Magazines require Issue Number and Publication Date. Non-applicable fields are null.
 
