@@ -43,8 +43,8 @@ transaction before continuing after an expected error.
 
 ## Policy defaults for this implementation
 
-These fill gaps in the earlier requirements and can be revised before final
-acceptance. They are project implementation decisions, not course-imposed rules.
+The team should confirm these choices before final acceptance. Parts 1–4 specify
+the circulation rules and the data to retain, leaving these policy details open.
 
 - Library calendar: `America/Chicago`, explicitly applied to timestamp/date rules.
 - Loan length: 14 calendar days by default; callers may supply an eligible due date.
@@ -58,6 +58,9 @@ acceptance. They are project implementation decisions, not course-imposed rules.
   rate cannot change while it applies to active loans. Lowering a limit below an
   existing active count is rejected. Existing closed-loan fee amounts are stored;
   `assess_late_fee` returns those finalized amounts after later policy changes.
+  Part 4 stores current membership on the client. The team should confirm that
+  the Part 2 borrowing report uses current membership. Reporting the membership
+  at checkout would require storing membership history or a value on each loan.
 - Repeated active-loan assessments replace the assessed total, preserving payments.
   Use nondecreasing assessment dates. Backdating a return/assessment that would
   reduce the charge below payments is rejected by the balance constraint.
@@ -65,18 +68,40 @@ acceptance. They are project implementation decisions, not course-imposed rules.
   Only one open hold per client/item. Queue order is reservation_date then ID.
   Return promotes the first pending hold; the item becomes reserved for that
   client. Their successful checkout fulfills it. Cancellation promotes the next.
-  Holds do not expire automatically. Finish/cancelled holds cannot be reopened.
+  Holds do not expire automatically. Completed or cancelled holds cannot be
+  reopened. Confirm whether a new request should also be accepted for an item
+  already reserved and awaiting pickup. Part 2 uses the broader word “unavailable.”
 - Cancel open reservations before making their client inactive/restricted or
   making the item borrowing-restricted. Restricted clients can still return loans.
 - Availability is derived from active loans/available holds. Do not set it by
   hand to a contradictory value. Direct writes must preserve this relationship.
 - Loan identity, checkout and due dates are fixed after insertion; record its first
   return once. Extensions and reopening closed loans are outside this scope.
-- Notice records do not send email/text. Reservation-ready notices are created
+- Notices are stored as database records. Reservation-ready notices are created
   automatically on promotion. Run `generate_notifications` for due-soon/overdue
-  notices. At most one loan notice per type/day, one ready notice per reservation.
+  notices. Automated generation creates at most one loan notice per type/day
+  and one ready notice per reservation. Part 4 allows several notices per
+  reservation, so an authorized operator can record additional reminders.
 - Foreign keys retain referenced history (no cascaded deletes). Cancel/return
   active records instead of deleting them. Remove an item only if unreferenced.
+  Part 2 expressly blocks removal during an active loan or reservation. Part 4
+  also restricts deletion when a historical record still references the item.
+
+## Parts 1–4 coverage and handoff
+
+| Earlier submission | Physical implementation and remaining verification |
+| --- | --- |
+| [Part 1 vision and scope](../../part-1-deliverables/PART_1_VISION_AND_PROJECT_PLAN.md) | PostgreSQL tables, constraints and triggers are installed by the SQL files. The full sample dataset and demonstration reports are separate team deliverables. |
+| [Part 2 requirements](../../part-2-deliverables/PART_2_REQUIREMENTS.md) | Package A covers record maintenance, circulation, limits, restrictions, fees, reservations and notice records in the database. Validate catalog searches and reports from Package B on Package D's seed. Use Package E's integrated tests to check the required results, error cases, and query performance. |
+| [Part 3 ER model](../../part-3-deliverables/PART_3_ER_MODEL.md) | All seven entities and the relationships in the ER model map to the tables, keys and constraints below the `library` schema. |
+| [Part 4 relational schema](../../part-4-deliverables/PART_4_RELATIONAL_SCHEMA.md) | The tables, columns, types, required fields, item subtypes and event links follow the data dictionary. Composite foreign keys enforce the rule that a notification's recipient matches its event's client. |
+
+Part 2 describes staff and client actions. The current scripts support a
+database-owner demonstration in the SQL Editor. Confirm how the team will show
+the Part 6 interface and whether it will provision separate staff, client or TA
+access. Separate roles and an application interface remain team decisions. Use
+the fee functions for assessments and payments. The database owner can make
+administrative corrections with direct SQL.
 
 ## Seed loading
 
@@ -108,8 +133,9 @@ Library writes acquire one transaction-level advisory lock before row work.
 This deliberately serializes short write transactions for the course dataset,
 including direct SQL. It prevents both duplicate item checkout and a member
 exceeding a limit through simultaneous checkouts of different items. Reads are
-not serialized. Keep transactions short and commit/rollback promptly. This is
-not a design for high-throughput production circulation.
+not serialized. Use PostgreSQL's default `READ COMMITTED` isolation for library
+writes so validation after waiting for the lock can see the preceding commit.
+Keep transactions short and commit or roll back promptly.
 
 - Package B: query these tables and export results; do not duplicate circulation rules.
 - Package C: assemble the final report from actual DDL/output; record these defaults.

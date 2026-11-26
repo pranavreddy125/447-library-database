@@ -36,8 +36,8 @@ SELECT * FROM library.library_item ORDER BY item_id;
 
 The schema file intentionally fails on an existing schema instead of deleting
 data or silently accepting an incompatible structure. Each installation file is
-transactional. The operations file can be rerun to replace its functions/triggers.
-Do not rerun the schema file as a reset procedure against a populated database.
+transactional. On a database installed from this version of the schema, rerun
+the operations file to replace its functions and triggers.
 
 ## Run with a PostgreSQL client
 
@@ -72,6 +72,13 @@ SELECT library.generate_notifications();
 These calls illustrate the interfaces; they require the matching existing records
 and appropriate state. `03_demo.sql` creates its own records and is runnable on a
 fresh installation without assuming any generated identifiers.
+
+The Exam 3 SQL Examples 8b slides show column and table checks, primary and
+foreign keys, and ordinary transactions. The schema uses those patterns. For
+checks across tables, PostgreSQL uses foreign keys and `EXISTS` or `NOT EXISTS`
+predicates inside the rule triggers. PostgreSQL accepts row expressions in
+`CHECK` and reserves subqueries for other SQL contexts. Partial unique indexes
+cover rules that apply only to selected rows, such as one active loan per item.
 
 ## Local Package A verification
 

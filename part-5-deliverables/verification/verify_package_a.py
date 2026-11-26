@@ -27,6 +27,16 @@ HOLD = BORROW + "SELECT library.reserve_item(1002,1001,'2025-01-02');"
 QUEUE = HOLD + "SELECT library.reserve_item(1003,1001,'2025-01-03');"
 RETURN = "SELECT library.return_item((SELECT loan_id FROM library.loan WHERE item_id=1001),'2025-01-18 12:00-06');"
 PAID = BORROW + RETURN + "SELECT library.pay_late_fee((SELECT fee_id FROM library.late_fee),0.25);"
+PART_4_COLUMNS = {
+    'membership_type': 'membership_type_id name borrowing_limit daily_late_fee_rate',
+    'client': 'client_id first_name last_name phone_number membership_type_id account_status',
+    'library_item': 'item_id title item_type availability_status borrowing_restricted author_creator '
+                    'isbn publication_year genre issue_number publication_date',
+    'loan': 'loan_id item_id client_id checkout_timestamp due_date return_timestamp',
+    'late_fee': 'fee_id loan_id amount_owed amount_paid',
+    'reservation': 'reservation_id client_id item_id reservation_date reservation_status',
+    'notification': 'notification_id client_id loan_id reservation_id notification_type message creation_timestamp',
+}
 
 
 def main():
@@ -67,8 +77,24 @@ def main():
             raise RuntimeError('Local PostgreSQL did not become ready')
         for filename in ('01_schema.sql','02_operations.sql'):
             run((ROOT / 'sql' / filename).read_text(), check=True)
+        demo = run((ROOT / 'sql' / '03_demo.sql').read_text(), check=True).stdout
+        results.append({'name': 'SQL editor demo', 'passed':
+                        'Demo book|reserved|available|0.75|0.00' in demo
+                        and 'on_loan|fulfilled' in demo})
+        case('demo rolls back records', 'SELECT count(*) FROM library.loan;', 0, fixture=False)
 
+        case('library writes reject stale snapshot isolation',
+             "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; " + FIXTURE,
+             error='0A000', fixture=False)
         case('seven tables', "SELECT count(*) FROM pg_tables WHERE schemaname='library';", 7, fixture=False)
+        columns = run("""
+            SELECT table_name, column_name FROM information_schema.columns
+            WHERE table_schema = 'library' ORDER BY table_name, ordinal_position;
+        """, check=True).stdout.splitlines()
+        expected_columns = [f'{table}|{column}' for table in sorted(PART_4_COLUMNS)
+                            for column in PART_4_COLUMNS[table].split()]
+        results.append({'name': 'Part 4 tables and columns', 'passed': columns == expected_columns,
+                        **({'expected': expected_columns, 'actual': columns} if columns != expected_columns else {})})
         case('RLS on every table', "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='library' AND c.relkind='r' AND c.relrowsecurity;", 7, fixture=False)
         case('no security definer functions', "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='library' AND p.prosecdef;", 0, fixture=False)
         case('no public function execute', "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a WHERE n.nspname='library' AND a.grantee=0 AND a.privilege_type='EXECUTE';", 0, fixture=False)
@@ -80,6 +106,7 @@ def main():
             ('NaN rate', "UPDATE library.membership_type SET daily_late_fee_rate='NaN' WHERE membership_type_id=1001;", '23514'),
             ('membership FK', "UPDATE library.client SET membership_type_id=9999 WHERE client_id=1001;", '23503'),
             ('blank client name', "UPDATE library.client SET first_name=' ' WHERE client_id=1001;", '23514'),
+            ('whitespace-only client name', "UPDATE library.client SET first_name=chr(9) WHERE client_id=1001;", '23514'),
             ('invalid account status', "UPDATE library.client SET account_status='unknown' WHERE client_id=1001;", '23514'),
             ('invalid item type', "UPDATE library.library_item SET item_type='other' WHERE item_id=1001;", '23514'),
             ('book requires author', "UPDATE library.library_item SET author_creator=NULL WHERE item_id=1001;", '23514'),
@@ -99,6 +126,7 @@ def main():
             ('duplicate active loan', BORROW + "SELECT library.checkout_item(1002,1001);", '23514'),
             ('zero borrowing limit', "UPDATE library.membership_type SET borrowing_limit=0 WHERE membership_type_id=1001;" + BORROW, '23514'),
             ('borrowing limit via direct inserts', BORROW + "SELECT library.checkout_item(1001,1002); INSERT INTO library.loan(client_id,item_id,due_date) VALUES(1001,1003,current_date+14);", '23514'),
+            ('borrowing limit via multi-row insert', "UPDATE library.membership_type SET borrowing_limit=1; INSERT INTO library.loan(client_id,item_id,due_date) VALUES(1001,1001,current_date+14),(1001,1002,current_date+14);", '23514'),
             ('freeze active fee rate', BORROW + "UPDATE library.membership_type SET daily_late_fee_rate=1 WHERE membership_type_id=1001;", '23514'),
             ('freeze active membership', BORROW + "UPDATE library.client SET membership_type_id=1002 WHERE client_id=1001;", '23514'),
             ('cannot lower limit under active count', BORROW + "UPDATE library.membership_type SET borrowing_limit=0 WHERE membership_type_id=1001;", '23514'),
@@ -124,9 +152,11 @@ def main():
             ('fee uniqueness', BORROW + RETURN + "INSERT INTO library.late_fee(loan_id,amount_owed) SELECT loan_id,1 FROM library.loan;", '23505'),
             ('overpayment rejected', PAID + "SELECT library.pay_late_fee((SELECT fee_id FROM library.late_fee),1);", '23514'),
             ('fractional-cent payment rejected', BORROW + RETURN + "SELECT library.pay_late_fee((SELECT fee_id FROM library.late_fee),0.001);", '23514'),
-            ('wrong loan notification client', BORROW + "INSERT INTO library.notification(client_id,loan_id,notification_type,message) SELECT 1002,loan_id,'overdue','Example' FROM library.loan;", '23514'),
-            ('wrong hold notification client', HOLD + RETURN + "UPDATE library.notification SET client_id=1003;", '23514'),
+            ('wrong loan notification client', BORROW + "INSERT INTO library.notification(client_id,loan_id,notification_type,message) SELECT 1002,loan_id,'overdue','Example' FROM library.loan;", '23503'),
+            ('wrong hold notification client', HOLD + RETURN + "UPDATE library.notification SET client_id=1003;", '23503'),
             ('notification needs event', "INSERT INTO library.notification(client_id,notification_type,message) VALUES(1001,'overdue','Example');", '23514'),
+            ('notification source must match type', HOLD + "INSERT INTO library.notification(client_id,reservation_id,notification_type,message) SELECT client_id,reservation_id,'overdue','Example' FROM library.reservation;", '23514'),
+            ('no cross-row subquery in CHECK', "CREATE TEMP TABLE check_example (id INTEGER CHECK (NOT EXISTS (SELECT 1 FROM library.client)));", '0A000'),
         ]:
             case(name, sql, error=state)
 
@@ -148,10 +178,13 @@ def main():
         case('held checkout fulfills reservation', HOLD + RETURN + "SELECT library.checkout_item(1002,1001); SELECT reservation_status FROM library.reservation;", 'fulfilled')
         case('notification batch idempotent', BORROW + "SELECT library.generate_notifications('2025-01-14'); SELECT library.generate_notifications('2025-01-14');", 0)
         case('due soon and overdue notification types', BORROW + "SELECT library.generate_notifications('2025-01-14'); SELECT library.generate_notifications('2025-01-16'); SELECT string_agg(notification_type,',' ORDER BY notification_type) FROM library.notification;", 'overdue,upcoming_due')
+        case('reservation can have multiple notices', HOLD + RETURN + "INSERT INTO library.notification(client_id,reservation_id,notification_type,message) SELECT client_id,reservation_id,'reservation_available','Pickup reminder' FROM library.reservation; SELECT count(*) FROM library.notification;", 2)
+        case('ready notification batch idempotent', HOLD + RETURN + "SELECT library.generate_notifications('2025-01-19'); SELECT count(*) FROM library.notification;", 1)
         case('on-time return has no fee record', BORROW + "SELECT library.return_item((SELECT loan_id FROM library.loan),'2025-01-15 23:00-06'); SELECT count(*) FROM library.late_fee;", 0)
         case('zero rate has zero charge', "UPDATE library.client SET membership_type_id=1002 WHERE client_id=1001;" + BORROW + RETURN, '0.00')
         case('closed fee survives later rate changes', BORROW + RETURN + "UPDATE library.membership_type SET daily_late_fee_rate=1 WHERE membership_type_id=1001; SELECT library.assess_late_fee((SELECT loan_id FROM library.loan),'2025-03-01');", '0.75')
         case('closed fee survives later membership changes', BORROW + RETURN + "UPDATE library.client SET membership_type_id=1002 WHERE client_id=1001; SELECT library.assess_late_fee((SELECT loan_id FROM library.loan),'2025-03-01');", '0.75')
+        case('no-op update preserves finalized fee', BORROW + RETURN + "UPDATE library.membership_type SET daily_late_fee_rate=1 WHERE membership_type_id=1001; UPDATE library.loan SET return_timestamp=return_timestamp; SELECT amount_owed FROM library.late_fee;", '0.75')
         case('first return finalizes provisional assessment', BORROW + "SELECT library.assess_late_fee((SELECT loan_id FROM library.loan),'2025-01-16');" + RETURN, '0.75')
         case('zero-rate late fee stays finalized', "UPDATE library.client SET membership_type_id=1002 WHERE client_id=1001;" + BORROW + RETURN + "UPDATE library.membership_type SET daily_late_fee_rate=2 WHERE membership_type_id=1002; SELECT library.assess_late_fee((SELECT loan_id FROM library.loan),'2025-03-01');", '0.00')
         case('overpaid backdated return rejected atomically', BORROW + "SELECT library.assess_late_fee((SELECT loan_id FROM library.loan),'2025-01-19'); SELECT library.pay_late_fee((SELECT fee_id FROM library.late_fee),1); SELECT library.return_item((SELECT loan_id FROM library.loan),'2025-01-16 12:00-06');", error='23514')
