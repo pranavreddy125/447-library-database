@@ -1,9 +1,6 @@
 -- Sample circulation transaction
 BEGIN;
 
-INSERT INTO library.membership_type (name, borrowing_limit, daily_late_fee_rate)
-VALUES ('Demo membership', 2, 0.25);
-
 CREATE TEMP TABLE demo_ids (
     borrower INTEGER,
     waiting_client INTEGER,
@@ -12,27 +9,27 @@ CREATE TEMP TABLE demo_ids (
     reservation INTEGER
 ) ON COMMIT DROP;
 
-INSERT INTO demo_ids DEFAULT VALUES;
-
-INSERT INTO library.client (first_name, last_name, phone_number, membership_type_id)
-VALUES ('Alex', 'Demo', '555-0101',
-        currval(pg_get_serial_sequence('library.membership_type', 'membership_type_id')));
-
-UPDATE demo_ids
-SET borrower = currval(pg_get_serial_sequence('library.client', 'client_id'));
-
-INSERT INTO library.client (first_name, last_name, phone_number, membership_type_id)
-VALUES ('Sam', 'Demo', '555-0102',
-        currval(pg_get_serial_sequence('library.membership_type', 'membership_type_id')));
-
-UPDATE demo_ids
-SET waiting_client = currval(pg_get_serial_sequence('library.client', 'client_id'));
-
-INSERT INTO library.library_item (title, item_type, author_creator, publication_year, genre)
-VALUES ('Demo book', 'book', 'Demo Author', 2025, 'Fiction');
-
-UPDATE demo_ids
-SET item = currval(pg_get_serial_sequence('library.library_item', 'item_id'));
+WITH new_membership AS (
+    INSERT INTO library.membership_type (name, borrowing_limit, daily_late_fee_rate)
+    VALUES ('Demo membership', 2, 0.25)
+    RETURNING membership_type_id
+),
+new_clients AS (
+    INSERT INTO library.client (first_name, last_name, phone_number, membership_type_id)
+    SELECT 'Alex', 'Demo', '555-0101', membership_type_id FROM new_membership
+    UNION ALL
+    SELECT 'Sam', 'Demo', '555-0102', membership_type_id FROM new_membership
+    RETURNING client_id, first_name
+),
+new_item AS (
+    INSERT INTO library.library_item (title, item_type, author_creator, publication_year, genre)
+    VALUES ('Demo book', 'book', 'Demo Author', 2025, 'Fiction')
+    RETURNING item_id
+)
+INSERT INTO demo_ids (borrower, waiting_client, item)
+SELECT borrower.client_id, waiting.client_id, new_item.item_id
+FROM new_clients AS borrower, new_clients AS waiting, new_item
+WHERE borrower.first_name = 'Alex' AND waiting.first_name = 'Sam';
 
 UPDATE demo_ids
 SET loan = library.checkout_item(borrower, item, '2025-01-01 12:00-06', DATE '2025-01-15');

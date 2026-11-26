@@ -80,6 +80,11 @@ predicates inside the rule triggers. PostgreSQL accepts row expressions in
 `CHECK` and reserves subqueries for other SQL contexts. Partial unique indexes
 cover rules that apply only to selected rows, such as one active loan per item.
 
+The fee logic uses `BETWEEN` for monetary bounds, `CASE` for overdue days and
+an `UPDATE` with a subquery to finalize the fee. The queue uses `ORDER BY` with
+standard `FETCH FIRST 1 ROW ONLY`. The demo uses `WITH` and `INSERT ... SELECT`
+along with PostgreSQL `RETURNING` to identify the exact rows inserted.
+
 ## Local Package A verification
 
 Requires Python 3 and a running Docker installation. The verifier starts and

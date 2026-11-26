@@ -45,7 +45,8 @@ BEGIN
         WHERE reservation_id = (
             SELECT reservation_id FROM library.reservation
             WHERE item_id = p_item_id AND reservation_status = 'pending'
-            ORDER BY reservation_date, reservation_id LIMIT 1
+            ORDER BY reservation_date, reservation_id
+            FETCH FIRST 1 ROW ONLY
         );
     END IF;
     PERFORM library.sync_item(p_item_id);
@@ -217,7 +218,8 @@ BEGIN
        AND NOT EXISTS (SELECT 1 FROM library.loan WHERE item_id = NEW.item_id AND return_timestamp IS NULL) THEN
         SELECT reservation_id INTO v_first FROM library.reservation
         WHERE item_id = NEW.item_id AND reservation_status = 'pending'
-        ORDER BY reservation_date, reservation_id LIMIT 1;
+        ORDER BY reservation_date, reservation_id
+        FETCH FIRST 1 ROW ONLY;
         IF v_first = NEW.reservation_id THEN RETURN NEW; END IF;
     END IF;
     IF OLD.reservation_status = 'available' AND NEW.reservation_status = 'fulfilled'
@@ -233,7 +235,7 @@ CREATE OR REPLACE FUNCTION library.assess_late_fee(
     p_as_of DATE DEFAULT CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Chicago' AS DATE)
 ) RETURNS NUMERIC
 LANGUAGE plpgsql SET search_path = pg_catalog, library AS $$
-DECLARE v_amount NUMERIC(10,2); v_end DATE; v_due DATE; v_rate NUMERIC(6,2); v_closed BOOLEAN;
+DECLARE v_amount NUMERIC(10,2); v_end DATE; v_due DATE; v_rate NUMERIC(6,2); v_closed BOOLEAN; v_days INTEGER;
 BEGIN
     PERFORM library.lock_writes();
     IF p_as_of IS NULL THEN RAISE EXCEPTION 'Assessment date is required' USING ERRCODE = '23514'; END IF;
@@ -248,7 +250,8 @@ BEGIN
         SELECT amount_owed INTO v_amount FROM library.late_fee WHERE loan_id = p_loan_id;
         IF FOUND THEN RETURN v_amount; END IF;
     END IF;
-    v_amount := GREATEST(v_end - v_due, 0) * v_rate;
+    v_days := v_end - v_due;
+    v_amount := CASE WHEN v_days > 0 THEN v_days * v_rate ELSE 0 END;
     UPDATE library.late_fee SET amount_owed = v_amount WHERE loan_id = p_loan_id;
     IF NOT FOUND AND (v_amount > 0 OR (v_closed AND v_end > v_due)) THEN
         INSERT INTO library.late_fee (loan_id, amount_owed) VALUES (p_loan_id, v_amount);
@@ -277,6 +280,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION library.after_loan() RETURNS TRIGGER
 LANGUAGE plpgsql SET search_path = pg_catalog, library AS $$
+DECLARE v_return_date DATE; v_days INTEGER;
 BEGIN
     IF TG_OP = 'UPDATE' THEN
         IF OLD.return_timestamp IS NOT NULL OR NEW.return_timestamp IS NULL THEN
@@ -288,12 +292,16 @@ BEGIN
         WHERE item_id = NEW.item_id AND client_id = NEW.client_id AND reservation_status = 'available';
     ELSE
         -- finalize any provisional fee
-        UPDATE library.late_fee f
-        SET amount_owed = GREATEST(CAST(NEW.return_timestamp AT TIME ZONE 'America/Chicago' AS DATE) - NEW.due_date, 0)
-                          * m.daily_late_fee_rate
-        FROM library.client c JOIN library.membership_type m USING (membership_type_id)
-        WHERE f.loan_id = NEW.loan_id AND c.client_id = NEW.client_id;
-        PERFORM library.assess_late_fee(NEW.loan_id, CAST(NEW.return_timestamp AT TIME ZONE 'America/Chicago' AS DATE));
+        v_return_date := CAST(NEW.return_timestamp AT TIME ZONE 'America/Chicago' AS DATE);
+        v_days := v_return_date - NEW.due_date;
+        UPDATE library.late_fee
+        SET amount_owed = (
+            SELECT CASE WHEN v_days > 0 THEN v_days * m.daily_late_fee_rate ELSE 0 END
+            FROM library.client c JOIN library.membership_type m USING (membership_type_id)
+            WHERE c.client_id = NEW.client_id
+        )
+        WHERE loan_id = NEW.loan_id;
+        PERFORM library.assess_late_fee(NEW.loan_id, v_return_date);
     END IF;
     PERFORM library.promote_reservation(NEW.item_id);
     RETURN NEW;
@@ -305,15 +313,13 @@ CREATE OR REPLACE FUNCTION library.checkout_item(
     p_checkout_timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, p_due_date DATE DEFAULT NULL
 ) RETURNS INTEGER
 LANGUAGE plpgsql SET search_path = pg_catalog, library AS $$
-DECLARE v_id INTEGER;
 BEGIN
     PERFORM library.lock_writes();
     IF p_checkout_timestamp IS NULL THEN RAISE EXCEPTION 'Checkout timestamp is required' USING ERRCODE = '23514'; END IF;
     INSERT INTO library.loan (client_id, item_id, checkout_timestamp, due_date)
     VALUES (p_client_id, p_item_id, p_checkout_timestamp,
-            COALESCE(p_due_date, CAST(p_checkout_timestamp AT TIME ZONE 'America/Chicago' AS DATE) + 14))
-    RETURNING loan_id INTO v_id;
-    RETURN v_id;
+            COALESCE(p_due_date, CAST(p_checkout_timestamp AT TIME ZONE 'America/Chicago' AS DATE) + 14));
+    RETURN (SELECT loan_id FROM library.loan WHERE item_id = p_item_id AND return_timestamp IS NULL);
 END;
 $$;
 
@@ -336,12 +342,15 @@ CREATE OR REPLACE FUNCTION library.reserve_item(
     p_reservation_date DATE DEFAULT CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Chicago' AS DATE)
 ) RETURNS INTEGER
 LANGUAGE plpgsql SET search_path = pg_catalog, library AS $$
-DECLARE v_id INTEGER;
 BEGIN
     PERFORM library.lock_writes();
     INSERT INTO library.reservation (client_id, item_id, reservation_date)
-    VALUES (p_client_id, p_item_id, p_reservation_date) RETURNING reservation_id INTO v_id;
-    RETURN v_id;
+    VALUES (p_client_id, p_item_id, p_reservation_date);
+    RETURN (
+        SELECT reservation_id FROM library.reservation
+        WHERE client_id = p_client_id AND item_id = p_item_id
+          AND reservation_status IN ('pending', 'available')
+    );
 END;
 $$;
 
@@ -357,16 +366,14 @@ $$;
 
 CREATE OR REPLACE FUNCTION library.pay_late_fee(p_fee_id INTEGER, p_amount NUMERIC) RETURNS NUMERIC
 LANGUAGE plpgsql SET search_path = pg_catalog, library AS $$
-DECLARE v_balance NUMERIC;
 BEGIN
     PERFORM library.lock_writes();
     IF p_amount IS NULL OR p_amount <= 0 OR p_amount <> round(p_amount, 2) THEN
         RAISE EXCEPTION 'Payment must be positive with at most two decimal places' USING ERRCODE = '23514';
     END IF;
-    UPDATE library.late_fee SET amount_paid = amount_paid + p_amount WHERE fee_id = p_fee_id
-    RETURNING amount_owed - amount_paid INTO v_balance;
+    UPDATE library.late_fee SET amount_paid = amount_paid + p_amount WHERE fee_id = p_fee_id;
     IF NOT FOUND THEN RAISE EXCEPTION 'Fee does not exist' USING ERRCODE = '23503'; END IF;
-    RETURN v_balance;
+    RETURN (SELECT amount_owed - amount_paid FROM library.late_fee WHERE fee_id = p_fee_id);
 END;
 $$;
 

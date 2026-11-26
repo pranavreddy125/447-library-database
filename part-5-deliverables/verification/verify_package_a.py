@@ -77,11 +77,24 @@ def main():
             raise RuntimeError('Local PostgreSQL did not become ready')
         for filename in ('01_schema.sql','02_operations.sql'):
             run((ROOT / 'sql' / filename).read_text(), check=True)
-        demo = run((ROOT / 'sql' / '03_demo.sql').read_text(), check=True).stdout
+        demo_sql = (ROOT / 'sql' / '03_demo.sql').read_text()
+        demo = run(demo_sql, check=True).stdout
         results.append({'name': 'SQL editor demo', 'passed':
                         'Demo book|reserved|available|0.75|0.00' in demo
                         and 'on_loan|fulfilled' in demo})
         case('demo rolls back records', 'SELECT count(*) FROM library.loan;', 0, fixture=False)
+        populated_demo = run("BEGIN;\n" + FIXTURE + """
+            UPDATE library.membership_type SET name='Demo membership', borrowing_limit=0
+            WHERE membership_type_id=1001;
+            UPDATE library.client SET first_name='Alex', last_name='Demo', phone_number='555-0101'
+            WHERE client_id=1001;
+            UPDATE library.client SET first_name='Sam', last_name='Demo', phone_number='555-0102'
+            WHERE client_id=1002;
+            UPDATE library.library_item SET title='Demo book' WHERE item_id=1001;
+        """ + demo_sql.replace("BEGIN;", "", 1), check=True).stdout
+        results.append({'name': 'demo uses its own rows when names repeat', 'passed':
+                        'Demo book|reserved|available|0.75|0.00' in populated_demo
+                        and 'on_loan|fulfilled' in populated_demo})
 
         case('library writes reject stale snapshot isolation',
              "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ; " + FIXTURE,
@@ -164,6 +177,10 @@ def main():
         case('ordinary client and item maintenance', "UPDATE library.client SET phone_number='+1 555 123 ext 4' WHERE client_id=1001; UPDATE library.library_item SET title='Revised title' WHERE item_id=1004; DELETE FROM library.library_item WHERE item_id=1004; SELECT count(*) FROM library.library_item;", 4)
         case('default loan period', "SELECT library.checkout_item(1001,1001,'2025-01-01 12:00-06'); SELECT due_date FROM library.loan;", '2025-01-15')
         case('checkout updates availability', BORROW + 'SELECT availability_status FROM library.library_item WHERE item_id=1001;', 'on_loan')
+        case('checkout returns the active ID after a prior loan', BORROW + RETURN + """
+            SELECT library.return_item(library.checkout_item(1002,1001));
+            SELECT count(*) FROM library.loan WHERE return_timestamp IS NOT NULL;
+        """, 2)
         case('Chicago dates independent of session timezone', "SET LOCAL TIME ZONE 'Asia/Tokyo'; SELECT library.checkout_item(1001,1001,'2025-01-02 02:00+00','2025-01-01'); SELECT due_date FROM library.loan;", '2025-01-01')
         case('due day has no late fee', BORROW + "SELECT library.assess_late_fee((SELECT loan_id FROM library.loan),'2025-01-15');", '0.00')
         case('active late fee calculation', BORROW + "SELECT library.assess_late_fee((SELECT loan_id FROM library.loan),'2025-01-19');", '1.00')
@@ -182,6 +199,11 @@ def main():
         """, error='23505')
         case('cancelling head promotes next', QUEUE + RETURN + "SELECT library.cancel_reservation((SELECT reservation_id FROM library.reservation WHERE client_id=1002)); SELECT client_id FROM library.reservation WHERE reservation_status='available';", 1003)
         case('cancelling pending leaves borrower intact', HOLD + "SELECT library.cancel_reservation((SELECT reservation_id FROM library.reservation)); SELECT availability_status FROM library.library_item WHERE item_id=1001;", 'on_loan')
+        case('reservation returns the new ID after a prior cancellation', HOLD + """
+            SELECT library.cancel_reservation((SELECT reservation_id FROM library.reservation));
+            SELECT library.cancel_reservation(library.reserve_item(1002,1001));
+            SELECT count(*) FROM library.reservation WHERE reservation_status='cancelled';
+        """, 2)
         case('held checkout fulfills reservation', HOLD + RETURN + "SELECT library.checkout_item(1002,1001); SELECT reservation_status FROM library.reservation;", 'fulfilled')
         case('notification batch idempotent', BORROW + "SELECT library.generate_notifications('2025-01-14'); SELECT library.generate_notifications('2025-01-14');", 0)
         case('due soon and overdue notification types', BORROW + "SELECT library.generate_notifications('2025-01-14'); SELECT library.generate_notifications('2025-01-16'); SELECT string_agg(notification_type,',' ORDER BY notification_type) FROM library.notification;", 'overdue,upcoming_due')
