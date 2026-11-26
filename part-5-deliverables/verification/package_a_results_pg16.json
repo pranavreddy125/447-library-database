@@ -1,7 +1,7 @@
 {
   "database": "PostgreSQL 16.14 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
-  "passed": 96,
-  "total": 96,
+  "passed": 98,
+  "total": 98,
   "failures": [],
-  "elapsed_seconds": 18.95
+  "elapsed_seconds": 24.35
 }

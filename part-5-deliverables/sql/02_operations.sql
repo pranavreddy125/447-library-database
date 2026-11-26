@@ -193,9 +193,14 @@ BEGIN
            OR NOT EXISTS (SELECT 1 FROM library.library_item WHERE item_id = NEW.item_id AND NOT borrowing_restricted) THEN
             RAISE EXCEPTION 'Client or item is not eligible for reservation' USING ERRCODE = '23514';
         END IF;
-        IF NOT EXISTS (SELECT 1 FROM library.loan WHERE item_id = NEW.item_id AND return_timestamp IS NULL)
-           OR EXISTS (SELECT 1 FROM library.loan WHERE item_id = NEW.item_id AND client_id = NEW.client_id AND return_timestamp IS NULL) THEN
-            RAISE EXCEPTION 'Reserve an unavailable item borrowed by another client' USING ERRCODE = '23514';
+        IF NOT EXISTS (
+            SELECT 1 FROM library.library_item
+            WHERE item_id = NEW.item_id AND availability_status IN ('on_loan', 'reserved')
+        ) THEN
+            RAISE EXCEPTION 'Reserve an item on loan or awaiting pickup' USING ERRCODE = '23514';
+        END IF;
+        IF EXISTS (SELECT 1 FROM library.loan WHERE item_id = NEW.item_id AND client_id = NEW.client_id AND return_timestamp IS NULL) THEN
+            RAISE EXCEPTION 'Cannot reserve an item you currently have on loan' USING ERRCODE = '23514';
         END IF;
         RETURN NEW;
     END IF;

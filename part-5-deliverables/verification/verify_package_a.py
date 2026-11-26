@@ -173,6 +173,13 @@ def main():
         case('return releases availability', BORROW + RETURN + "SELECT availability_status FROM library.library_item WHERE item_id=1001;", 'available')
         case('restricted client can still return', BORROW + "UPDATE library.client SET account_status='restricted' WHERE client_id=1001;" + RETURN, '0.75')
         case('FIFO reservation promotion and notice', QUEUE + RETURN + "SELECT concat(r.client_id,':',i.availability_status,':',(SELECT count(*) FROM library.notification)) FROM library.reservation r JOIN library.library_item i USING(item_id) WHERE r.reservation_status='available';", '1002:reserved:1')
+        case('new hold can join while the item awaits pickup', HOLD + RETURN + """
+            SELECT library.reserve_item(1003,1001,'2025-01-19');
+            SELECT string_agg(reservation_status,',' ORDER BY client_id) FROM library.reservation;
+        """, 'available,pending')
+        case('pickup client already has an open hold', HOLD + RETURN + """
+            SELECT library.reserve_item(1002,1001,'2025-01-19');
+        """, error='23505')
         case('cancelling head promotes next', QUEUE + RETURN + "SELECT library.cancel_reservation((SELECT reservation_id FROM library.reservation WHERE client_id=1002)); SELECT client_id FROM library.reservation WHERE reservation_status='available';", 1003)
         case('cancelling pending leaves borrower intact', HOLD + "SELECT library.cancel_reservation((SELECT reservation_id FROM library.reservation)); SELECT availability_status FROM library.library_item WHERE item_id=1001;", 'on_loan')
         case('held checkout fulfills reservation', HOLD + RETURN + "SELECT library.checkout_item(1002,1001); SELECT reservation_status FROM library.reservation;", 'fulfilled')

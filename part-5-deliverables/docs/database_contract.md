@@ -41,10 +41,10 @@ triggers enforce related rules. Expected constraint/rule errors reject the
 statement. In an explicit transaction, roll back to a savepoint or roll back the
 transaction before continuing after an expected error.
 
-## Policy defaults for this implementation
+## Library policies for Parts 5 and 6
 
-The team should confirm these choices before final acceptance. Parts 1–4 specify
-the circulation rules and the data to retain, leaving these policy details open.
+Parts 1–4 specify the circulation rules and the data to retain. These policies
+fill in the details for the implementation, sample data, reports and demo.
 
 - Library calendar: `America/Chicago`, explicitly applied to timestamp/date rules.
 - Loan length: 14 calendar days by default; callers may supply an eligible due date.
@@ -58,19 +58,16 @@ the circulation rules and the data to retain, leaving these policy details open.
   rate cannot change while it applies to active loans. Lowering a limit below an
   existing active count is rejected. Existing closed-loan fee amounts are stored;
   `assess_late_fee` returns those finalized amounts after later policy changes.
-  Part 4 stores current membership on the client. The team should confirm that
-  the Part 2 borrowing report uses current membership. Reporting the membership
-  at checkout would require storing membership history or a value on each loan.
 - Repeated active-loan assessments replace the assessed total, preserving payments.
   Use nondecreasing assessment dates. Backdating a return/assessment that would
   reduce the charge below payments is rejected by the balance constraint.
-- Reservations are for loaned, unrestricted items held by a different borrower.
-  Only one open hold per client/item. Queue order is reservation_date then ID.
-  Return promotes the first pending hold; the item becomes reserved for that
-  client. Their successful checkout fulfills it. Cancellation promotes the next.
-  Holds do not expire automatically. Completed or cancelled holds cannot be
-  reopened. Confirm whether a new request should also be accepted for an item
-  already reserved and awaiting pickup. Part 2 uses the broader word “unavailable.”
+- Active clients can reserve unrestricted items that are on loan to another
+  client or awaiting pickup. This implements “unavailable” in Parts 2 and 4.
+  Each client may have one open hold per item. The queue orders pending holds by
+  reservation date and then reservation ID. A return or cancellation of the
+  ready hold offers the item to the next client. New requests wait behind the
+  ready hold. Pickup fulfills the hold. Holds stay open until pickup or manual
+  cancellation.
 - Cancel open reservations before making their client inactive/restricted or
   making the item borrowing-restricted. Restricted clients can still return loans.
 - Availability is derived from active loans/available holds. Do not set it by
@@ -82,6 +79,10 @@ the circulation rules and the data to retain, leaving these policy details open.
   notices. Automated generation creates at most one loan notice per type/day
   and one ready notice per reservation. Part 4 allows several notices per
   reservation, so an authorized operator can record additional reminders.
+- The Part 2 borrowing-by-membership report groups by the client's current
+  membership. Label it “Borrowing by current membership type” so readers can
+  see how a later membership change affects the report. The join follows Part 4
+  from loan to client to membership type.
 - Foreign keys retain referenced history (no cascaded deletes). Cancel/return
   active records instead of deleting them. Remove an item only if unreferenced.
   Part 2 expressly blocks removal during an active loan or reservation. Part 4
@@ -96,19 +97,21 @@ the circulation rules and the data to retain, leaving these policy details open.
 | [Part 3 ER model](../../part-3-deliverables/PART_3_ER_MODEL.md) | All seven entities and the relationships in the ER model map to the tables, keys and constraints below the `library` schema. |
 | [Part 4 relational schema](../../part-4-deliverables/PART_4_RELATIONAL_SCHEMA.md) | The tables, columns, types, required fields, item subtypes and event links follow the data dictionary. Composite foreign keys enforce the rule that a notification's recipient matches its event's client. |
 
-Part 2 describes staff and client actions. The current scripts support a
-database-owner demonstration in the SQL Editor. Confirm how the team will show
-the Part 6 interface and whether it will provision separate staff, client or TA
-access. Separate roles and an application interface remain team decisions. Use
-the fee functions for assessments and payments. The database owner can make
-administrative corrections with direct SQL.
+Use the Supabase SQL Editor as the Part 6 demo interface. The team administrator
+runs the predefined circulation examples and reports, then runs queries the TA
+requests. Show staff and client actions as SQL scenarios in the same session.
+Independent TA access is optional under the Part 6 instructions. If the team
+chooses to offer it, plan access for the specific queries or write operations
+the TA will need. Use the fee functions for assessments and payments. The
+database owner can make administrative corrections with direct SQL.
 
 ## Seed loading
 
 Install schema and operations first. Load membership types → clients → items →
 loans → reservations and other dependent records. Items start `available`;
-inserting active loans updates them. New reservations start `pending` while the
-item is on loan; recording its return promotes the first hold and creates a notice.
+inserting active loans updates them. New reservations start `pending` on items
+that are on loan or awaiting pickup. Returning a loan promotes the first
+pending hold and creates a notice.
 Returned historical loans may be inserted with valid checkout/due/return dates;
 their return trigger assesses fees. Do not insert duplicate fee/notice records
 for values already created by triggers. Set account/item restrictions after
