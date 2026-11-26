@@ -1,0 +1,7 @@
+{
+  "database": "PostgreSQL 17.11 on aarch64-unknown-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+  "passed": 101,
+  "total": 101,
+  "failures": [],
+  "elapsed_seconds": 22.79
+}

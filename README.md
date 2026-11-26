@@ -6,3 +6,4 @@
 - [Part 2 — Requirements Document (9/27)](part-2-deliverables/PART_2_REQUIREMENTS.md)
 - [Part 3 — Entity-Relationship Modeling](part-3-deliverables/)
 - [Part 4 — Relational Schema Mapping](part-4-deliverables/)
+- [Part 5 — Physical Database Implementation](part-5-deliverables/README.md)
